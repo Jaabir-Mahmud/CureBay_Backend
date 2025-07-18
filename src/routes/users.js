@@ -58,4 +58,28 @@ router.patch('/:id/role', async (req, res) => {
   }
 });
 
+// DELETE /api/users/:id - delete a user
+router.delete('/:id', async (req, res) => {
+  try {
+    const user = await User.findByIdAndDelete(req.params.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    res.json({ message: 'User deleted' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PATCH /api/users/:id/active - toggle isActive status
+router.patch('/:id/active', async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    user.isActive = !user.isActive;
+    await user.save();
+    res.json({ message: 'User status updated', isActive: user.isActive });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
