@@ -34,6 +34,14 @@ const isValidUrl = (string) => {
 // POST /api/users/google - handle Google sign-in (no middleware needed)
 router.post('/google', async (req, res) => {
     try {
+        // Check database connection first
+        const mongoose = require('mongoose');
+        if (mongoose.connection.readyState !== 1) {
+            return res.status(503).json({
+                error: 'Database connection unavailable',
+                message: 'The database is not connected. Please check your MongoDB connection and try again.'
+            });
+        }
         const { uid, email, name, profilePicture } = req.body;
         // Validate inputs
         if (!email || !isValidEmail(email)) {
@@ -107,6 +115,13 @@ router.post('/google', async (req, res) => {
     }
     catch (error) {
         console.error('Google sign-in error:', error);
+        // Check if it's a database connection error
+        if (error.name === 'MongooseError' && error.message.includes('buffering')) {
+            return res.status(503).json({
+                error: 'Database connection unavailable',
+                message: 'The database is not connected. Please check your MongoDB connection and try again.'
+            });
+        }
         res.status(500).json({ error: 'Internal server error' });
     }
 });

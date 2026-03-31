@@ -3,6 +3,7 @@
 const { verifyToken } = require('../controllers/authController');
 const UserSyncService = require('../services/userSyncService');
 const User = require('../models/User');
+const mongoose = require('mongoose');
 // Utility function to sanitize email
 const sanitizeEmail = (email) => {
     if (typeof email !== 'string')
@@ -10,12 +11,24 @@ const sanitizeEmail = (email) => {
     // Basic email sanitization
     return email.trim().toLowerCase();
 };
+// Check if MongoDB is connected
+function isDatabaseConnected() {
+    return mongoose.connection.readyState === 1; // 1 = connected
+}
 /**
  * Middleware to sync Firebase user with MongoDB user
  * Ensures user data is up-to-date before processing requests
  */
 async function syncUser(req, res, next) {
     try {
+        // Check database connection first
+        if (!isDatabaseConnected()) {
+            console.error('Database not connected - cannot sync user');
+            return res.status(503).json({
+                error: 'Database connection unavailable',
+                message: 'The database is not connected. Please check your MongoDB connection and try again.'
+            });
+        }
         // If devAuth has already attached a user, skip token verification
         if (req.user && req.firebaseUser) {
             return next();
@@ -39,7 +52,7 @@ async function syncUser(req, res, next) {
         // Update decoded token with sanitized email
         decoded.email = sanitizedEmail;
         // Sync user data with Firebase using the service
-        const user = await UserSyncService.syncUser(decoded);
+        let user = await UserSyncService.syncUser(decoded);
         const validationResult = UserSyncService.validateUserSession(user);
         if (!validationResult.isValid) {
             return res.status(401).json({ error: validationResult.reason });
@@ -50,6 +63,15 @@ async function syncUser(req, res, next) {
         next();
     }
     catch (err) {
+        // Check if it's a database connection error
+        if (err.name === 'MongooseError' && err.message.includes('buffering')) {
+            console.error('Database operation timed out - MongoDB not connected');
+            return res.status(503).json({
+                error: 'Database connection unavailable',
+                message: 'The database is not connected. Please check your MongoDB connection and try again.'
+            });
+        }
+        console.error('syncUser error:', err);
         res.status(401).json({ error: 'Invalid or expired token' });
     }
 }
@@ -63,6 +85,20 @@ async function validateUserSession(req, res, next) {
         console.log('NODE_ENV:', process.env.NODE_ENV);
         console.log('req.user:', req.user);
         console.log('req.firebaseUser:', req.firebaseUser);
+        // Check database connection first
+        if (!isDatabaseConnected()) {
+            console.error('Database not connected - cannot validate user session');
+            // In development mode, allow requests to proceed without DB (for testing)
+            const isDev = process.env.NODE_ENV === 'development' || !process.env.NODE_ENV;
+            if (isDev) {
+                console.log('Development mode: Allowing request without DB connection');
+                return next();
+            }
+            return res.status(503).json({
+                error: 'Database connection unavailable',
+                message: 'The database is not connected. Please check your MongoDB connection and try again.'
+            });
+        }
         // Check if we're in development mode
         const isDev = process.env.NODE_ENV === 'development' || !process.env.NODE_ENV;
         console.log('isDev:', isDev);
@@ -97,7 +133,24 @@ async function validateUserSession(req, res, next) {
         // Update decoded token with sanitized email
         decoded.email = sanitizedEmail;
         // Just validate the existing user without syncing
-        const user = await User.findOne({ email: sanitizedEmail });
+        let user = await User.findOne({ email: sanitizedEmail });
+        // If user doesn't exist, try to create them (for Google sign-in flow)
+        if (!user) {
+            try {
+                user = await UserSyncService.syncUser(decoded);
+            }
+            catch (syncError) {
+                console.error('Failed to sync user:', syncError);
+                // Check if it's a database connection error
+                if (syncError.name === 'MongooseError' && syncError.message.includes('buffering')) {
+                    return res.status(503).json({
+                        error: 'Database connection unavailable',
+                        message: 'The database is not connected. Please check your MongoDB connection and try again.'
+                    });
+                }
+                return res.status(401).json({ error: 'User not found and could not be created' });
+            }
+        }
         const validationResult = UserSyncService.validateUserSession(user);
         if (!validationResult.isValid) {
             return res.status(401).json({ error: validationResult.reason });
@@ -109,6 +162,19 @@ async function validateUserSession(req, res, next) {
     }
     catch (err) {
         console.error('validateUserSession error:', err);
+        // Check if it's a database connection error
+        if (err.name === 'MongooseError' && err.message.includes('buffering')) {
+            console.error('Database operation timed out - MongoDB not connected');
+            const isDev = process.env.NODE_ENV === 'development' || !process.env.NODE_ENV;
+            if (isDev) {
+                console.log('Development mode: Allowing request without DB connection');
+                return next();
+            }
+            return res.status(503).json({
+                error: 'Database connection unavailable',
+                message: 'The database is not connected. Please check your MongoDB connection and try again.'
+            });
+        }
         res.status(401).json({ error: 'Invalid or expired token' });
     }
 }

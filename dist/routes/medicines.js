@@ -3,12 +3,13 @@ const express = require('express');
 const router = express.Router();
 const { getMedicines, getMedicineById, getDiscountedMedicines, createMedicine, updateMedicine, deleteMedicine } = require('../controllers/medicineController');
 const { syncUser } = require('../middleware/userSync');
+const { requireDatabase } = require('../middleware/dbCheck');
 // Public routes
-router.get('/', (req, res) => {
+router.get('/', requireDatabase, (req, res) => {
     console.log('GET /api/medicines called');
     return getMedicines(req, res);
 });
-router.get('/discounted', (req, res) => {
+router.get('/discounted', requireDatabase, (req, res) => {
     console.log('GET /api/medicines/discounted called');
     return getDiscountedMedicines(req, res);
 });

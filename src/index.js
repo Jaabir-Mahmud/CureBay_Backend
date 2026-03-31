@@ -85,6 +85,15 @@ app.get('/', (req, res) => {
     res.json({ message: 'CureBay API Server is running!' });
 });
 
+// Health check endpoint for UptimeRobot
+app.get('/health', (req, res) => {
+    res.status(200).json({ 
+        status: 'ok', 
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime()
+    });
+});
+
 // Error handling middleware
 app.use((err, req, res, next) => {
     console.error(err.stack);

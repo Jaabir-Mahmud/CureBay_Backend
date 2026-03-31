@@ -49,7 +49,13 @@ catch (error) {
         const app = admin.initializeApp({
             projectId: 'curebay-21207'
         });
-        app.isDevelopmentMode = true;
+        // Only set development mode if we're actually in development
+        if (process.env.NODE_ENV === 'development' || !process.env.NODE_ENV) {
+            app.isDevelopmentMode = true;
+        }
+        else {
+            app.isDevelopmentMode = false;
+        }
     }
 }
 // Add a helper function to check if we're in development mode

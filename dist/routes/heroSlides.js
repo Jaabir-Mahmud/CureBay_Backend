@@ -3,9 +3,10 @@ const express = require('express');
 const router = express.Router();
 const { getHeroSlides, getHeroSlideById, createHeroSlide, updateHeroSlide, deleteHeroSlide, toggleHeroSlideStatus, updateHeroSlidePriority } = require('../controllers/heroSlideController');
 const { syncUser } = require('../middleware/userSync');
+const { requireDatabase } = require('../middleware/dbCheck');
 const mongoose = require('mongoose');
 // Public routes
-router.get('/', (req, res) => {
+router.get('/', requireDatabase, (req, res) => {
     console.log('GET /api/hero-slides/ called');
     return getHeroSlides(req, res);
 });

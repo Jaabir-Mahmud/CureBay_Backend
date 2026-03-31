@@ -43,8 +43,15 @@ router.get('/overview', async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
+// GET /api/admin/test
+router.get('/test', async (req, res) => {
+    console.log('Test endpoint hit');
+    res.json({ message: 'Test endpoint working' });
+});
 // GET /api/admin/reports/sales
 router.get('/reports/sales', async (req, res) => {
+    console.log('Reports sales endpoint hit');
+    console.log('Query parameters:', req.query);
     try {
         const { start, end, type } = req.query;
         // Parse dates
