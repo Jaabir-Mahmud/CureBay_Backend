@@ -113,8 +113,6 @@ const confirmPayment = async (req, res) => {
     
     // Get the order to find the seller
     const Order = require('../models/Order');
-    const Medicine = require('../models/Medicine');
-    
     const order = await Order.findById(orderId).populate({
       path: 'items.medicine',
       select: 'seller'
@@ -124,11 +122,12 @@ const confirmPayment = async (req, res) => {
       return res.status(404).json({ error: 'Order not found' });
     }
     
-    // Extract sellerId from the first item's medicine (assuming all items are from the same seller)
-    const sellerId = order.items[0]?.medicine?.seller;
-    
+    // Extract sellerId from the first item's medicine or fallback
+    let sellerId = order.items[0]?.medicine?.seller;
     if (!sellerId) {
-      return res.status(400).json({ error: 'Seller not found for this order' });
+      const User = require('../models/User');
+      const fallbackSeller = await User.findOne({ role: { $in: ['seller', 'admin'] } });
+      sellerId = fallbackSeller ? fallbackSeller._id : (req.user ? req.user._id : order.user);
     }
     
     // Create a payment record in our database
@@ -138,13 +137,19 @@ const confirmPayment = async (req, res) => {
       amount: paymentIntent.amount / 100, // Convert from cents
       currency: paymentIntent.currency,
       status: 'succeeded',
-      paymentMethod: paymentIntent.payment_method_types[0],
-      cardBrand: paymentIntent.charges?.data[0]?.payment_method_details?.card?.brand,
-      cardLast4: paymentIntent.charges?.data[0]?.payment_method_details?.card?.last4,
+      paymentMethod: paymentIntent.payment_method_types?.[0] || 'card',
+      cardBrand: paymentIntent.charges?.data?.[0]?.payment_method_details?.card?.brand || null,
+      cardLast4: paymentIntent.charges?.data?.[0]?.payment_method_details?.card?.last4 || null,
       sellerId: sellerId
     });
     
     await paymentRecord.save();
+
+    // Update order status
+    order.paymentStatus = 'paid';
+    order.status = 'paid';
+    order.paymentId = paymentIntentId;
+    await order.save();
     
     res.json(paymentRecord);
   } catch (err) {
@@ -153,9 +158,47 @@ const confirmPayment = async (req, res) => {
   }
 };
 
+// Get payments for a specific user
+const getUserPayments = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { status } = req.query;
+
+    const isOwner = req.user && (
+      req.user._id.toString() === userId || 
+      req.user.firebaseUid === userId ||
+      (req.user.id && req.user.id.toString() === userId)
+    );
+
+    if (req.user.role !== 'admin' && !isOwner) {
+      return res.status(403).json({ error: 'Access denied. You can only view your own payments.' });
+    }
+
+    const Order = require('../models/Order');
+    const orders = await Order.find({ user: req.user._id });
+    const orderIds = orders.map(o => o._id);
+
+    const query = { orderId: { $in: orderIds } };
+    if (status && status !== 'all') {
+      query.status = status;
+    }
+
+    const payments = await Payment.find(query)
+      .populate('orderId', 'totalAmount status shippingAddress createdAt')
+      .populate('sellerId', 'name email')
+      .sort({ createdAt: -1 });
+
+    res.json({ payments });
+  } catch (err) {
+    console.error('Error fetching user payments:', err);
+    res.status(500).json({ error: 'Failed to fetch payments', details: err.message });
+  }
+};
+
 module.exports = {
   getSellerPayments,
   getAllPayments,
   createPaymentIntent,
-  confirmPayment
+  confirmPayment,
+  getUserPayments
 };

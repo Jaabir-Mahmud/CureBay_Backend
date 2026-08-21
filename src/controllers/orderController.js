@@ -9,7 +9,7 @@ async function createOrder(req, res) {
     const { userId, items, shippingAddress, totalAmount, currency, coupon } = req.body;
     
     // Validate required fields
-    if (!userId || !items || !shippingAddress || !totalAmount) {
+    if (!items || !shippingAddress || !totalAmount) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
     
@@ -25,9 +25,14 @@ async function createOrder(req, res) {
       }
     }
     
+    const targetUserId = req.user ? req.user._id : userId;
+    if (!targetUserId) {
+      return res.status(400).json({ error: 'User ID is required' });
+    }
+
     // Create the order
     const orderData = {
-      user: userId,
+      user: targetUserId,
       items: items.map(item => ({
         medicine: item.medicineId,
         quantity: item.quantity,
@@ -55,22 +60,29 @@ async function createOrder(req, res) {
   }
 }
 
-// Get all orders (admin only)
+// Get orders (admin gets all or filtered, regular user gets their own)
 async function getOrders(req, res) {
   try {
-    const orders = await Order.find()
+    let query = {};
+    if (req.user.role !== 'admin') {
+      query.user = req.user._id;
+    } else if (req.query.userId) {
+      query.user = req.query.userId;
+    }
+
+    const orders = await Order.find(query)
       .populate('user', 'name email')
       .populate('items.medicine', 'name price')
       .sort({ createdAt: -1 });
     
-    res.json(orders);
+    res.json({ orders });
   } catch (err) {
     console.error('Error fetching orders:', err);
     res.status(500).json({ error: err.message });
   }
 }
 
-// Get specific order (admin only)
+// Get specific order (admin or order owner)
 async function getOrderById(req, res) {
   try {
     const order = await Order.findById(req.params.id)
@@ -79,6 +91,10 @@ async function getOrderById(req, res) {
     
     if (!order) {
       return res.status(404).json({ error: 'Order not found' });
+    }
+
+    if (req.user.role !== 'admin' && order.user._id.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ error: 'Access denied. You can only view your own order.' });
     }
     
     res.json(order);

@@ -1,10 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const { getSellerPayments, getAllPayments, createPaymentIntent, confirmPayment } = require('../controllers/paymentController');
+const { getSellerPayments, getAllPayments, createPaymentIntent, confirmPayment, getUserPayments } = require('../controllers/paymentController');
 const { requireSellerOrAdmin } = require('../middleware/sellerAuth');
-
-// Apply seller auth middleware to all routes in this file
-router.use(requireSellerOrAdmin);
+const { syncUser } = require('../middleware/userSync');
 
 // Middleware to check if user is admin
 const requireAdmin = (req, res, next) => {
@@ -14,16 +12,19 @@ const requireAdmin = (req, res, next) => {
   next();
 };
 
-// POST /api/payments/create-payment-intent - Create a Stripe payment intent
-router.post('/create-payment-intent', createPaymentIntent);
+// POST /api/payments/create-payment-intent - Create a Stripe payment intent (authenticated users)
+router.post('/create-payment-intent', syncUser, createPaymentIntent);
 
-// POST /api/payments/confirm - Confirm a payment
-router.post('/confirm', confirmPayment);
+// POST /api/payments/confirm - Confirm a payment (authenticated users)
+router.post('/confirm', syncUser, confirmPayment);
 
 // GET /api/payments - Get all payments (admin only)
-router.get('/', requireAdmin, getAllPayments);
+router.get('/', syncUser, requireAdmin, getAllPayments);
 
-// GET /api/payments/seller/:sellerId - Get payments for a specific seller
-router.get('/seller/:sellerId', getSellerPayments);
+// GET /api/payments/user/:userId - Get payments for a specific user (authenticated user/admin)
+router.get('/user/:userId', syncUser, getUserPayments);
+
+// GET /api/payments/seller/:sellerId - Get payments for a specific seller (seller/admin only)
+router.get('/seller/:sellerId', requireSellerOrAdmin, getSellerPayments);
 
 module.exports = router;
