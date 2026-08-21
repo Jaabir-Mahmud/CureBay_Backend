@@ -20,7 +20,8 @@ async function createOrder(req, res) {
     
     // Validate each item has required fields
     for (const item of items) {
-      if (!item.medicineId || !item.quantity) {
+      const medId = item.medicineId || item._id || item.id || item.medicine;
+      if (!medId || !item.quantity) {
         return res.status(400).json({ error: 'Each item must have medicineId and quantity' });
       }
     }
@@ -34,7 +35,7 @@ async function createOrder(req, res) {
     const orderData = {
       user: targetUserId,
       items: items.map(item => ({
-        medicine: item.medicineId,
+        medicine: item.medicineId || item._id || item.id || item.medicine,
         quantity: item.quantity,
         price: item.price || 0 // Price will be populated from medicine data
       })),
